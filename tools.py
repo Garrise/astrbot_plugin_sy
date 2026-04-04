@@ -51,7 +51,7 @@ class ReminderTools:
         
         return msg_origin
     
-    async def set_reminder(self, event: Union[AstrMessageEvent, Context], text: str, datetime_str: str, user_name: str = "用户", repeat: str | None = None, holiday_type: str | None = None, group_id: str | None = None):
+    async def set_reminder(self, event: Union[AstrMessageEvent, Context], text: str, datetime_str: str, user_name: str = "用户", repeat: str | None = None, holiday_type: str | None = None, group_id: str | None = None, at_all: bool = False):
         '''设置一个提醒
         
         Args:
@@ -89,7 +89,7 @@ class ReminderTools:
             logger.info("开始调用统一处理器")
             result_message = None
             async for result in self.processor.process_add_item(
-                event, 'reminder', text, parsed_datetime_str, None, repeat, holiday_type, group_id, time_already_parsed=True, user_name=user_name
+                event, 'reminder', text, parsed_datetime_str, None, repeat, holiday_type, group_id, time_already_parsed=True, user_name=user_name, at_all=at_all
             ):
                 logger.info(f"收到统一处理器结果: {type(result)}")
                 # event.plain_result() 返回的是MessageEventResult对象
@@ -114,7 +114,7 @@ class ReminderTools:
         except Exception as e:
             return f"设置提醒时出错：{str(e)}"
     
-    async def set_task(self, event: Union[AstrMessageEvent, Context], text: str, datetime_str: str, repeat: str | None = None, holiday_type: str | None = None, group_id: str | None = None, user_name: str | None = None):
+    async def set_task(self, event: Union[AstrMessageEvent, Context], text: str, datetime_str: str, repeat: str | None = None, holiday_type: str | None = None, group_id: str | None = None, user_name: str | None = None, at_all: bool = False):
         '''设置一个任务，到时间后会让AI执行该任务
         
         Args:
@@ -145,7 +145,7 @@ class ReminderTools:
             # 使用统一处理器处理任务
             result_message = None
             async for result in self.processor.process_add_item(
-                event, 'task', text, parsed_datetime_str, None, repeat, holiday_type, group_id, time_already_parsed=True, user_name=user_name
+                event, 'task', text, parsed_datetime_str, None, repeat, holiday_type, group_id, time_already_parsed=True, user_name=user_name, at_all=at_all
             ):
                 # event.plain_result() 返回的是MessageEventResult对象
                 # 使用get_plain_text()方法提取纯文本消息

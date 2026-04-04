@@ -12,7 +12,7 @@ from .tools import ReminderTools
 from .commands import ReminderCommands
 from .qq_id_cache import init_qq_id_cache
 
-@register("ai_reminder", "kjqwdw", "智能定时任务，输入/rmd help查看帮助", "1.4.2")
+@register("ai_reminder", "kjqwdw", "智能定时任务，输入/rmd help查看帮助", "1.4.3")
 class SmartReminder(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
         super().__init__(context)
@@ -127,7 +127,7 @@ class SmartReminder(Star):
         logger.info(f"不活跃自动清理：{str(self.inactive_timeout_hours) + '小时' if self.inactive_timeout_hours > 0 else '禁用'}")
 
     @filter.llm_tool(name="set_reminder_or_task")
-    async def set_reminder_or_task(self, event, text: str, datetime_str: str, is_task: str = "no", user_name: str = "用户", repeat: str | None = None, holiday_type: str | None = None, group_id: str | None = None):
+    async def set_reminder_or_task(self, event, text: str, datetime_str: str, is_task: str = "no", user_name: str = "用户", repeat: str | None = None, holiday_type: str | None = None, group_id: str | None = None, at_all: str = "no"):
         '''设置一个提醒或任务，到时间后会提醒用户或让AI执行该任务
         
         Args:
@@ -138,6 +138,7 @@ class SmartReminder(Star):
             repeat(string): 重复类型，可选值：daily(每天)，weekly(每周)，monthly(每月)，yearly(每年)，none(不重复)。
             holiday_type(string): 可选，节假日类型：workday(仅工作日执行)，holiday(仅法定节假日执行)
             group_id(string): 可选，指定群聊ID，用于在特定群聊中设置提醒或任务，默认值为None（注意，当且仅当用户明确告诉你群聊id比如qq群号，才需要填写，如果只是本群提醒或任务，不需要填写）
+            at_all(string): 是否@全体成员，"yes"为到时间时@全体成员，"no"为只@创建者（默认）。仅在群聊中有效，当用户明确要求提醒全体成员或@所有人时设置为"yes"
         '''
         # 校验 group_id，防止 AI 填入中文
         if group_id and re.search(r'[\u4e00-\u9fa5]', group_id):
@@ -145,10 +146,11 @@ class SmartReminder(Star):
             group_id = None
 
         is_task_bool = is_task and is_task.lower() == "yes"
+        at_all_bool = bool(at_all and at_all.lower() == "yes")
         if is_task_bool:
-            return await self.tools.set_task(event, text, datetime_str, repeat, holiday_type, group_id)
+            return await self.tools.set_task(event, text, datetime_str, repeat, holiday_type, group_id, at_all=at_all_bool)
         else:
-            return await self.tools.set_reminder(event, text, datetime_str, user_name, repeat, holiday_type, group_id)
+            return await self.tools.set_reminder(event, text, datetime_str, user_name, repeat, holiday_type, group_id, at_all=at_all_bool)
 
     @filter.llm_tool(name="delete_reminder_or_task")
     async def delete_reminder_or_task(self, event, 

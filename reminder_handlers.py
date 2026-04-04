@@ -3,7 +3,7 @@ import json
 import random
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
-from astrbot.api.message_components import At, Plain
+from astrbot.api.message_components import At, AtAll, Plain
 from astrbot.api.platform import AstrBotMessage, PlatformMetadata, MessageType, MessageMember
 from astrbot.core.platform.astr_message_event import AstrMessageEvent, MessageSesion
 from .utils import get_platform_type_from_origin, get_platform_id_from_origin
@@ -21,8 +21,12 @@ class ReminderMessageHandler:
         """添加@消息的helper函数"""
         platform_type = get_platform_type_from_origin(original_msg_origin, self.context)
         logger.info(f"@消息调试 - 平台类型: {platform_type}, original_msg_origin: {original_msg_origin}")
-        if platform_type == "aiocqhttp":
-            # QQ平台 - 优先使用昵称，回退到ID
+        if reminder.get("at_all"):
+            if platform_type == "aiocqhttp":
+                msg_chain.chain.append(AtAll())
+            else:
+                msg_chain.chain.append(Plain("@全体成员 "))
+        elif platform_type == "aiocqhttp":
             if "creator_name" in reminder and reminder["creator_name"]:
                 msg_chain.chain.append(At(qq=reminder["creator_id"], name=reminder["creator_name"]))
             else:
@@ -120,24 +124,28 @@ class ReminderMessageHandler:
         else:
             should_at = self.config.get("enable_reminder_at", True)
         
-        if should_at and not self.is_private_chat(original_msg_origin) and "creator_id" in reminder and reminder["creator_id"]:
-            platform_type = get_platform_type_from_origin(original_msg_origin, self.context)
-            if platform_type == "aiocqhttp":
-                # QQ平台 - 优先使用昵称，回退到ID
-                if "creator_name" in reminder and reminder["creator_name"]:
-                    msg.chain.append(At(qq=reminder["creator_id"], name=reminder["creator_name"]))
+        if should_at and not self.is_private_chat(original_msg_origin):
+            # 检查是否需要@全体成员
+            if reminder.get("at_all"):
+                platform_type = get_platform_type_from_origin(original_msg_origin, self.context)
+                if platform_type == "aiocqhttp":
+                    msg.chain.append(AtAll())
                 else:
-                    msg.chain.append(At(qq=reminder["creator_id"]))
-            elif platform_type in self.wechat_platforms:
-                # 所有微信平台 - 使用用户名/昵称而不是ID
-                if "creator_name" in reminder and reminder["creator_name"]:
-                    msg.chain.append(Plain(f"@{reminder['creator_name']} "))
+                    msg.chain.append(Plain("@全体成员 "))
+            elif "creator_id" in reminder and reminder["creator_id"]:
+                platform_type = get_platform_type_from_origin(original_msg_origin, self.context)
+                if platform_type == "aiocqhttp":
+                    if "creator_name" in reminder and reminder["creator_name"]:
+                        msg.chain.append(At(qq=reminder["creator_id"], name=reminder["creator_name"]))
+                    else:
+                        msg.chain.append(At(qq=reminder["creator_id"]))
+                elif platform_type in self.wechat_platforms:
+                    if "creator_name" in reminder and reminder["creator_name"]:
+                        msg.chain.append(Plain(f"@{reminder['creator_name']} "))
+                    else:
+                        msg.chain.append(Plain(f"@{reminder['creator_id']} "))
                 else:
-                    # 如果没有保存用户名，尝试使用ID
                     msg.chain.append(Plain(f"@{reminder['creator_id']} "))
-            else:
-                # 其他平台的@实现
-                msg.chain.append(Plain(f"@{reminder['creator_id']} "))
         
         return msg
     
@@ -617,8 +625,9 @@ class TaskExecutor:
         if reminder.get("is_command_task", False):
             should_at = self.config.get("enable_command_at", False)
         
-        if should_at and not is_private_chat and "creator_id" in reminder and reminder["creator_id"]:
-            self.message_handler._add_at_message(final_msg, original_msg_origin, reminder)
+        if should_at and not is_private_chat:
+            if reminder.get("at_all") or ("creator_id" in reminder and reminder["creator_id"]):
+                self.message_handler._add_at_message(final_msg, original_msg_origin, reminder)
         
         for item in result_msg.chain:
             final_msg.chain.append(item)
@@ -763,9 +772,10 @@ class SimpleMessageSender:
         else:
             should_at = self.config.get("enable_reminder_at", True)
         
-        if should_at and not self.message_handler.is_private_chat(unified_msg_origin) and "creator_id" in reminder and reminder["creator_id"]:
-            original_msg_origin = self.message_handler.get_original_session_id(unified_msg_origin)
-            self.message_handler._add_at_message(msg, original_msg_origin, reminder)
+        if should_at and not self.message_handler.is_private_chat(unified_msg_origin):
+            if reminder.get("at_all") or ("creator_id" in reminder and reminder["creator_id"]):
+                original_msg_origin = self.message_handler.get_original_session_id(unified_msg_origin)
+                self.message_handler._add_at_message(msg, original_msg_origin, reminder)
         
         prefix = "指令任务: " if is_command_task else "任务: " if is_task else "提醒: "
         msg.chain.append(Plain(f"{prefix}{reminder['text']}"))

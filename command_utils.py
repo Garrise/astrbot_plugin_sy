@@ -322,35 +322,41 @@ class ItemBuilder:
     
     @staticmethod
     def build_reminder_item(text: str, dt: datetime.datetime, creator_id: str, creator_name: Optional[str],
-                          final_repeat: str, target_user_id: Optional[str] = None) -> Dict[str, Any]:
+                          final_repeat: str, target_user_id: Optional[str] = None,
+                          at_all: bool = False) -> Dict[str, Any]:
         """构建提醒数据项"""
-        # 如果指定了目标用户ID，则使用目标用户ID，否则使用创建者ID
         actual_creator_id = target_user_id if target_user_id else creator_id
-        return {
+        item = {
             "text": text,
             "datetime": dt.strftime("%Y-%m-%d %H:%M"),
-            "user_name": creator_name or creator_id,  # 优先使用昵称，回退到ID
+            "user_name": creator_name or creator_id,
             "repeat": final_repeat,
-            "creator_id": actual_creator_id,  # 使用实际的目标用户ID
+            "creator_id": actual_creator_id,
             "creator_name": creator_name,
             "is_task": False
         }
+        if at_all:
+            item["at_all"] = True
+        return item
     
     @staticmethod
     def build_task_item(text: str, dt: datetime.datetime, creator_id: str, creator_name: Optional[str],
-                       final_repeat: str, target_user_id: Optional[str] = None) -> Dict[str, Any]:
+                       final_repeat: str, target_user_id: Optional[str] = None,
+                       at_all: bool = False) -> Dict[str, Any]:
         """构建任务数据项"""
-        # 如果指定了目标用户ID，则使用目标用户ID，否则使用创建者ID
         actual_creator_id = target_user_id if target_user_id else creator_id
-        return {
+        item = {
             "text": text,
             "datetime": dt.strftime("%Y-%m-%d %H:%M"),
-            "user_name": creator_name or creator_id,  # 优先使用昵称，回退到ID
+            "user_name": creator_name or creator_id,
             "repeat": final_repeat,
-            "creator_id": actual_creator_id,  # 使用实际的目标用户ID
+            "creator_id": actual_creator_id,
             "creator_name": creator_name,
             "is_task": True
         }
+        if at_all:
+            item["at_all"] = True
+        return item
     
     @staticmethod
     def build_command_task_item(clean_display_command: str, commands: List[str], dt: datetime.datetime, 
@@ -589,7 +595,8 @@ class UnifiedCommandProcessor:
     async def process_add_item(self, event: AstrMessageEvent, item_type: str, content: str,
                               time_str: str, week: Optional[str] = None, repeat: Optional[str] = None,
                               holiday_type: Optional[str] = None, group_id: Optional[str] = None,
-                              time_already_parsed: bool = False, user_name: Optional[str] = None):
+                              time_already_parsed: bool = False, user_name: Optional[str] = None,
+                              at_all: bool = False):
         """
         统一处理添加项目的逻辑
         
@@ -669,10 +676,22 @@ class UnifiedCommandProcessor:
             target_user_id = None
             if item_type in ['reminder', 'task'] and user_name and event.get_group_id():
                 try:
-                    target_user_id = await SessionHelper.find_user_id_by_name(self.star.context.bot, event, user_name)
+                    bot = getattr(event, 'bot', None)
+                    if not bot:
+                        platform_id = event.unified_msg_origin.split(":")[0] if ":" in event.unified_msg_origin else None
+                        if platform_id:
+                            platform_inst = self.context.get_platform_inst(platform_id)
+                            if platform_inst and hasattr(platform_inst, 'bot'):
+                                bot = platform_inst.bot
+                    if bot:
+                        target_user_id = await SessionHelper.find_user_id_by_name(bot, event, user_name)
+                        if target_user_id:
+                            creator_name = user_name
+                            logger.info(f"找到目标用户: {user_name} -> {target_user_id}")
+                    else:
+                        logger.warning("无法获取bot实例，跳过目标用户查找")
                 except Exception as e:
-                    # 查找失败时保持原有逻辑，使用设置者的ID
-                    pass
+                    logger.warning(f"查找目标用户失败: {e}")
 
             # 5. 确保key存在
             actual_key = self.star.compatibility_handler.ensure_key_exists(msg_origin)
@@ -710,11 +729,11 @@ class UnifiedCommandProcessor:
                     return
             elif item_type == 'task':
                 item = ItemBuilder.build_task_item(
-                    content, dt, creator_id, creator_name, final_repeat, target_user_id
+                    content, dt, creator_id, creator_name, final_repeat, target_user_id, at_all=at_all
                 )
             else:  # reminder
                 item = ItemBuilder.build_reminder_item(
-                    content, dt, creator_id, creator_name, final_repeat, target_user_id
+                    content, dt, creator_id, creator_name, final_repeat, target_user_id, at_all=at_all
                 )
 
             # 9. 保存数据
