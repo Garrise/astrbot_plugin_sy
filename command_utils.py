@@ -3,6 +3,7 @@ import datetime
 from typing import List, Tuple, Optional, Dict, Any
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from astrbot.core.agent.run_context import ContextWrapper
 
 
 class CommandUtils:
@@ -614,6 +615,8 @@ class UnifiedCommandProcessor:
         Yields:
             消息结果
         """
+        if isinstance(event, ContextWrapper):
+            event = event.context.event  
         try:
             # 1. 解析时间
             if time_already_parsed:
